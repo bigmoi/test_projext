@@ -1,0 +1,60 @@
+configname: configtest
+
+trainstage : 'vae'
+
+istest : True
+vae_specs:
+  rnn_type: gru
+  x_birnn: false
+  e_birnn: false
+  use_drnn_mlp: true
+
+mode : train
+device : cuda
+#dataset configuration
+normalize_data: True
+dataset : h36m
+t_his : 25
+t_pred : 100
+
+#vaeconfig
+iter : 0
+nz: 128
+t_his: 25
+t_pred: 100
+lambda_v: 1000
+beta: 0.1
+vae_lr: 1.e-4
+batch_size: 64
+num_vae_epoch: 500
+num_vae_epoch_fix: 100
+num_vae_data_sample: 5000
+ablation :
+    SKIP_CONNECT: True
+    PE_TYPE: mld
+    MLP_DIST : True
+save_model_interval : 100
+vae_model_path : checkpoints/vae_model
+
+
+
+#diffusion config
+scheduler:
+  model: diffusers.DDIMScheduler
+  num_inference_timesteps: 50
+  eta: 0.0
+  params:
+    num_train_timesteps: 1000
+    beta_start: 0.00085
+    beta_end: 0.012
+    beta_schedule: 'scaled_linear' # Optional: ['linear', 'scaled_linear', 'squaredcos_cap_v2']
+    # variance_type: 'fixed_small'
+    clip_sample: false # clip sample to -1~1
+    # below are for ddim
+    set_alpha_to_one: false
+    steps_offset: 1
+diffusionlr : 1.e-4
+#denoiser
+num_denoiser_epoch : 500
+ema : True
+
