@@ -57,4 +57,4 @@ diffusionlr : 1.e-4
 #denoiser
 num_denoiser_epoch : 500
 ema : True
-
+diffusion_model_path : 'checkpoints/diffusion_model'

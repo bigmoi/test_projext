@@ -35,10 +35,9 @@ class GetParam:
             if type(value) is dict:
                 for subkey, subvalue in value.items():
                     setattr(self, f"{key}_{subkey}", subvalue)
-        # 设置基目录为当前工作目录的父目录
-        self.basedir=Path.cwd().parent
 
-        self.vae_model_path = os.path.join(self.basedir, config['vae_model_path'], 'vae_{}'.format(config['configname']))
+
+        self.vae_model_path = os.path.join(self.root, config['vae_model_path'], 'vae_{}'.format(config['configname']))
 
         print(self.vae_model_path)
         # 存一份 config 方便直接访问

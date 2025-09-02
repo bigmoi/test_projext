@@ -54,9 +54,9 @@ def main(cfg):
 
     if cfg.stage == 'diffusion':
         # 加载预训练vae模型：
-        # cp_path = os.path.join(args.root,args.vae_model_path, 'epcoh{}'.format(cfg.iter))
-        cp_path=r'E:\MyProjects\test_projext\checkpoints\vae_model\vae_configtest\epcoh99'
-        print('loading model from checkpoint: %s' % cp_path)
+        cp_path = os.path.join(args.root,args.vae_model_path, 'epcoh{}'.format(cfg.iter))
+
+        print('loading Vae model from checkpoint: %s' % cp_path)
         model_cp = pickle.load(open((cp_path+'.pth'), "rb"))  #暂时使用，后续考虑更改为使用torch.load
         vae_model.load_state_dict(model_cp['model_dict'])
 
@@ -73,6 +73,7 @@ def main(cfg):
 
         denoiser_model=Diffusion.MldDenoiser(abalation)
 
+
         trainer=TrainDiffusion.DiffusionTrainer(
             vae=vae_model,
             model=denoiser_model,
@@ -82,23 +83,23 @@ def main(cfg):
             logger=loger,
             tb_logger=tb_logger
         )
-
-        trainer.before_train()
+        if cfg.start_epoch > 0:
+            cp_path = os.path.join(args.root, args.diffusion_model_path, 'Epoch{}.pth'.format(cfg.start_epoch))
+            print('loading diffusion model from checkpoint: %s' % cp_path)
+            if trainer.load_checkpoint(cp_path):
+                loger.info(f'load diffusion model from {cp_path} successfully')
+            else:
+                loger.warning(f'load diffusion model from {cp_path} failed')
+                return
+        else :
+            trainer.before_train()
         for i in range(0,args.num_denoiser_epoch):
 
             trainer.before_train_step()
             trainer.run_train_step()
-            trainer.after_train_step()
+            trainer.after_train_step() #更新lr调度，记录日志信息 保存检查点
 
-            if  i!=0  and i % args.save_model_interval == 0:
-                save_path = os.path.join(args.diffusion_model_path, 'epcoh{}'.format(i))
-                os.makedirs(args.diffusion_model_path, exist_ok=True)
-                torch.save({'model_dict': denoiser_model.state_dict(),
-                            'optimizer_dict': trainer.optimizer.state_dict(),
-                            'scheduler_dict': trainer.lr_scheduler.state_dict(),
-                            'epoch': i},
-                           save_path)
-                print('model saved to %s' % save_path)
+
 
 
 
@@ -110,7 +111,8 @@ if __name__ == '__main__':
     argparse = argparse.ArgumentParser()
     argparse.add_argument('--cfg', default='configtest')
     argparse.add_argument('--stage', default='diffusion')
-    argparse.add_argument('--iter', type=int, default=99) #must be  multiple of 100
+    argparse.add_argument('--iter', type=int, default=500) #must be  multiple of 100 for vae model
+    argparse.add_argument('--start_epoch', type=int, default=2) #must exist such a checkpoint or set to 0
     cfg = argparse.parse_args()
 
     main(cfg)

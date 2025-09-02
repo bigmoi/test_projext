@@ -1,5 +1,5 @@
 import copy
-
+import os
 # import diffusers.DDPMScheduler as DDPMScheduler
 import time
 import torch
@@ -68,7 +68,7 @@ class DiffusionTrainer:
         self.logger = logger
         self.tb_logger = tb_logger
 
-        self.iter = 0
+        self.iter = 1
         self.lrs = []
 
         if self.cfg.ema is True:
@@ -80,6 +80,7 @@ class DiffusionTrainer:
             self.ema_setup = None
 
         self.diffusion_denoiser.to(self.cfg.device)
+
         #冻结vae参数
 
         for param in self.vae.parameters():
@@ -88,7 +89,7 @@ class DiffusionTrainer:
     def before_train(self):
         self.optimizer = optim.AdamW(self.diffusion_denoiser.parameters(), lr=self.cfg.diffusionlr)
         self.lr_scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400],
-                                                           gamma=0.8)
+                                                              gamma=0.8)
         self.noise_pre_loss = nn.MSELoss()
         self.noise_pre_loss_weight = 1.0
 
@@ -105,8 +106,7 @@ class DiffusionTrainer:
     def run_train_step(self): #实现前向传播过程和反向传播过程
         for sample in tqdm(self.dataloader):
             sample=rearrange(sample,'b t j c -> b t (j c)') # [B, T, joints*c]
-
-            sample = torch.tensor(sample).to(self.cfg.device)
+            sample = sample.to(self.cfg.device)
 
             with torch.no_grad():
                 latent, dist=self.vae.encode(sample,[self.cfg.t_his+self.cfg.t_pred] * self.cfg.batch_size)
@@ -145,7 +145,10 @@ class DiffusionTrainer:
                                                                             time.time() - self.t_s,
                                                                             self.train_losses.avg,
                                                                             self.lrs[-1]))
-        self.iter=self.iter+1
+
+        if self.iter in [1,2,3,4,5] or self.iter % self.cfg.save_model_interval == 0: #=1 4 test
+            self.save_checkpoint(os.path.join(self.cfg.root,self.cfg.diffusion_model_path))
+        self.iter = self.iter + 1
 
 
     def before_val(self):
@@ -154,6 +157,62 @@ class DiffusionTrainer:
         1
     def after_val_step(self):
         1
+
+    def save_checkpoint(self,ckpt_path):
+        """保存检查点，支持最佳模型保存"""
+        # 确保保存目录存在
+        os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
+
+        # 准备保存内容
+        checkpoint = {
+            'iter': self.iter,
+            'model_state_dict': self.diffusion_denoiser.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'lr_scheduler_state_dict': self.lr_scheduler.state_dict(),
+            'train_losses': self.train_losses.avg,
+            'lrs': self.lrs,
+            'ema_state_dict': self.ema_model.state_dict() if self.ema_model is not None else None,
+            'cfg': self.cfg,  # 保存配置便于恢复
+        }
+
+        # 保存定期检查点
+        checkpoint_path = f'{ckpt_path}/Epoch{self.iter}.pth'
+        torch.save(checkpoint, checkpoint_path)
+        self.logger.info(f'保存检查点到 {ckpt_path}')
+
+        # 如果是最佳模型，额外保存一份
+        # if is_best:
+        #     best_path = f'{self.cfg.ckpt}_best.pt'
+        #     torch.save(checkpoint, best_path)
+        #     self.logger.info(f'保存最佳模型到 {best_path}')
+
+    def load_checkpoint(self, ckpt_path):
+        """加载检查点恢复训练"""
+        if not os.path.exists(ckpt_path):
+            self.logger.warning(f"检查点 {ckpt_path} 不存在")
+            return False
+
+        self.logger.info(f"从检查点 {ckpt_path} 恢复训练")
+        checkpoint = torch.load(ckpt_path, map_location=self.cfg.device)
+
+        self.before_train()
+        # 恢复模型参数
+        self.diffusion_denoiser.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.lr_scheduler.load_state_dict(checkpoint['lr_scheduler_state_dict'])
+
+        # 恢复EMA模型（如果有）
+        if self.ema_model is not None and 'ema_state_dict' in checkpoint:
+            self.ema_model.load_state_dict(checkpoint['ema_state_dict'])
+
+        # 恢复训练状态
+        self.iter = checkpoint['iter']
+        if 'lrs' in checkpoint:
+            self.lrs = checkpoint['lrs']
+
+        self.logger.info(f"成功恢复至Epoch {self.iter}")
+        return True
+
 if __name__ == '__main__':
     ##test
     1
